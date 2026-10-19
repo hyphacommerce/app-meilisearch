@@ -1,0 +1,44 @@
+{
+  "name": "hypha-app-meilisearch",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hypha's first-party Meilisearch app (design note 0029): keeps a Meilisearch index per market from Hypha's webhooks and admin API, and answers the search.query extension point. One core on Web APIs, run on Cloudflare Workers (D1) or Node (SQLite).",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/hosts/node.ts",
+    "start": "node src/hosts/node.ts",
+    "worker:dev": "wrangler dev",
+    "worker:deploy": "wrangler deploy",
+    "build:node": "node scripts/bundle-node.ts",
+    "ui:build": "node scripts/build-ui.ts",
+    "ui:check": "node scripts/build-ui.ts --check",
+    "typecheck": "tsc --noEmit",
+    "lint": "vp lint --deny-warnings",
+    "lint:fix": "vp lint --fix",
+    "fmt": "vp fmt",
+    "fmt:check": "vp fmt --check",
+    "test": "node --test \"test/*.test.ts\"",
+    "test:integration": "node --test \"test/integration/*.test.ts\"",
+    "e2e": "bash scripts/e2e.sh"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.3",
+    "@hypha/app": "link:../hypha/packages/app",
+    "@hypha/sdk": "link:../hypha/packages/sdk",
+    "hono": "4.13.12"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261003.1",
+    "@hypha/app-bridge": "link:../hypha/packages/app-bridge",
+    "@types/node": "26.6.5",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3",
+    "vite-plus": "1.3.0",
+    "wrangler": "4.147.0"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@12.6.0"
+}
