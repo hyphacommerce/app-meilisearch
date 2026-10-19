@@ -1,0 +1,92 @@
+# Install, typecheck, lint, format, the settings script's freshness, the unit tests, and
+# the query mapping against a real Meilisearch. The app links Hypha's SDK from a sibling
+# checkout (`../hypha`), cloned with the HYPHA_REPO_TOKEN secret (read access to
+# invocation97/Hypha); without the secret the job says so and skips the rest.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      meilisearch:
+        image: getmeili/meilisearch:v1.54.3
+        env:
+          MEILI_MASTER_KEY: ci-master-key-0123456789
+          MEILI_NO_ANALYTICS: "true"
+        ports:
+          - 7700:7700
+    env:
+      HYPHA_REPO_TOKEN: ${{ secrets.HYPHA_REPO_TOKEN }}
+    steps:
+      - name: Hypha's SDK is reachable
+        id: sdk
+        run: |
+          if [ -z "$HYPHA_REPO_TOKEN" ]; then
+            echo "::warning::HYPHA_REPO_TOKEN isn't set: Hypha's SDK can't be checked out, so the checks are skipped"
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.sdk.outputs.available == 'true'
+        with:
+          path: hypha-app-meilisearch
+      - uses: actions/checkout@v4
+        if: steps.sdk.outputs.available == 'true'
+        with:
+          repository: invocation97/Hypha
+          ref: ${{ vars.HYPHA_REF || 'main' }}
+          token: ${{ secrets.HYPHA_REPO_TOKEN }}
+          path: hypha
+      - uses: pnpm/action-setup@v4
+        if: steps.sdk.outputs.available == 'true'
+        with:
+          package_json_file: hypha-app-meilisearch/package.json
+      - uses: actions/setup-node@v4
+        if: steps.sdk.outputs.available == 'true'
+        with:
+          node-version: 24
+      - name: Install Hypha's SDK packages
+        if: steps.sdk.outputs.available == 'true'
+        working-directory: hypha
+        run: pnpm install --frozen-lockfile --filter "@hypha/app..." --filter "@hypha/app-bridge..."
+      - name: Install
+        if: steps.sdk.outputs.available == 'true'
+        working-directory: hypha-app-meilisearch
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck, lint, format, the settings script
+        if: steps.sdk.outputs.available == 'true'
+        working-directory: hypha-app-meilisearch
+        run: |
+          pnpm typecheck
+          pnpm lint
+          pnpm fmt:check
+          pnpm ui:check
+      - name: Tests
+        if: steps.sdk.outputs.available == 'true'
+        working-directory: hypha-app-meilisearch
+        run: pnpm test
+      - name: Against Meilisearch
+        if: steps.sdk.outputs.available == 'true'
+        working-directory: hypha-app-meilisearch
+        env:
+          MEILI_URL: http://127.0.0.1:7700
+          MEILI_KEY: ci-master-key-0123456789
+        run: pnpm test:integration
+      - name: The Node bundle and the Worker build
+        if: steps.sdk.outputs.available == 'true'
+        working-directory: hypha-app-meilisearch
+        run: |
+          pnpm build:node
+          cp wrangler.toml.example wrangler.toml
+          pnpm exec wrangler deploy --dry-run --outdir dist/worker
