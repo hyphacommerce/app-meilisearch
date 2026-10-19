@@ -1,0 +1,38 @@
+# The app on Cloudflare Workers. Copy to wrangler.toml (git-ignored) and fill in:
+#   cp wrangler.toml.example wrangler.toml
+#   wrangler d1 create hypha-app-meilisearch     # put its ID below
+#   wrangler secret put APP_ENCRYPTION_KEY        # openssl rand -hex 32; keep it: it seals tokens and keys
+#   wrangler deploy
+# Migrations run on the first request (src/core/sql.ts); no `wrangler d1 migrations` step.
+
+name = "hypha-app-meilisearch"
+main = "src/hosts/worker.ts"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# Where the Worker is served, without a trailing slash: the manifest is APP_URL/manifest.json.
+APP_URL = "https://meilisearch-app.example.com"
+# Optional: the Hypha APIs allowed to install it (comma-separated origins); empty allows any.
+HYPHA_API_URLS = ""
+# Optional: admin origins allowed to frame the settings page, besides each store's own.
+ADMIN_ORIGINS = ""
+# Products rebuilt per step (each costs two API calls; mind the subrequest limit).
+REINDEX_BATCH = "20"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "hypha-app-meilisearch"
+database_id = "00000000-0000-0000-0000-000000000000"
+
+# Due work every minute (webhooks also start it right away, in waitUntil).
+[triggers]
+crons = ["* * * * *"]
+
+# Co-located with Hypha's API Worker (design note 0029, §9): calls to HYPHA_API_URL go
+# through the Service Binding instead of the public internet.
+# [vars]
+# HYPHA_API_URL = "https://api.shop.example"
+# [[services]]
+# binding = "HYPHA_API"
+# service = "<the API Worker's name>"
