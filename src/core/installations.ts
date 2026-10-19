@@ -1,7 +1,8 @@
 // Installing (design note 0029, §4.1): `GET /install?api=<Hypha API>` starts OAuth with
 // PKCE (the verifier kept here, keyed by `state`), Hypha's admin asks a staff member to
 // approve, and the redirect's code is exchanged for tokens and, on first install, the
-// app's secret. Each installation is keyed by its store's ID.
+// app's secret. Each installation is keyed by its store's ID, which the token response
+// names (`store`, as webhooks and extension calls name it in `Hypha-Store`).
 
 import {
   HyphaClient,
@@ -9,8 +10,8 @@ import {
   type TokenStore,
   createAuthorizationUrl,
   exchangeCode,
+  memoryTokenStore,
   parseAuthorizationResponse,
-  refresh,
 } from "@hypha/app";
 
 import type { AppContext } from "./context.ts";
@@ -23,6 +24,11 @@ import type { InstallationRow } from "./storage.ts";
 const STATE_TTL_MS = 15 * 60_000;
 /** Refresh this long before the access token expires. */
 const REFRESH_MARGIN_MS = 60_000;
+/** How long a refresh may hold the lock before another process may take it. */
+const REFRESH_LOCK_MS = 30_000;
+/** How long to wait for another process's refresh, and how often to look. */
+const LOCK_WAIT_MS = 10_000;
+const LOCK_POLL_MS = 200;
 
 export class InstallError extends Error {
   readonly code: string;
@@ -88,16 +94,16 @@ export async function completeInstall(ctx: AppContext, callback: string): Promis
     fetch: ctx.fetch,
     now: ctx.now,
   });
+  const store = tokens.store;
   const reader = new HyphaReader(
     new HyphaClient({
       apiUrl: state.api_url,
       manifestUrl: manifestUrl(ctx),
-      tokens: { get: async () => tokens, set: async () => {} },
+      tokens: memoryTokenStore(tokens),
       fetch: ctx.fetch,
       now: ctx.now,
     }),
   );
-  const store = (await reader.store()).id;
   const existing = await ctx.storage.getInstallation(store);
   const sealedSecret = tokens.appSecret
     ? await ctx.vault.seal(tokens.appSecret, `${store}:app_secret`)
@@ -107,7 +113,9 @@ export async function completeInstall(ctx: AppContext, callback: string): Promis
       "no_app_secret",
       "Hypha sent no app secret and none is stored: rotate it in the admin (POST /admin/apps/app_meilisearch/secret) and install again",
     );
-  const origins = await reader.adminOrigins().catch((): string[] => []);
+  // Saved before anything else is read: Hypha sends `app.installed` (signed with the
+  // secret) as soon as the code is exchanged, and a delivery that finds no installation
+  // is refused and retried.
   const now = ctx.now();
   await ctx.storage.saveInstallation({
     store,
@@ -117,7 +125,7 @@ export async function completeInstall(ctx: AppContext, callback: string): Promis
     refresh_token: await ctx.vault.seal(tokens.refreshToken, `${store}:refresh_token`),
     expires_at: tokens.expiresAt,
     app_secret: sealedSecret,
-    admin_origins: JSON.stringify(origins),
+    admin_origins: existing?.admin_origins ?? "[]",
     meili_url: existing?.meili_url ?? null,
     meili_key: existing?.meili_key ?? null,
     index_prefix: existing?.index_prefix ?? "hypha",
@@ -130,6 +138,12 @@ export async function completeInstall(ctx: AppContext, callback: string): Promis
   });
   // Build everything once Meilisearch is configured (the runner waits for it).
   await ctx.storage.mark(store, [{ target: "all", priority: 0 }], now);
+  const origins = await reader.adminOrigins().catch((): string[] | undefined => undefined);
+  if (origins)
+    await ctx.storage.updateInstallation(store, {
+      admin_origins: JSON.stringify(origins),
+      updated_at: ctx.now(),
+    });
   return store;
 }
 
@@ -158,10 +172,21 @@ async function readTokens(ctx: AppContext, row: InstallationRow): Promise<TokenS
     refreshToken: await ctx.vault.open(row.refresh_token, `${row.store}:refresh_token`),
     expiresAt: row.expires_at,
     scopes: row.scopes.split(" ").filter(Boolean),
+    store: row.store,
+    // The API the app was installed from: where it calls and refreshes.
+    issuer: row.api_url,
   };
 }
 
-function tokenStore(ctx: AppContext, store: string): TokenStore {
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * The installation's tokens in the app's database. Refresh tokens rotate and a reused
+ * one revokes the grant, so `HyphaClient` refreshes inside `withLock`, here a lock on
+ * the installation's row (`refresh_lock_until`): two isolates or processes never refresh
+ * at once, and the one that waited reads the pair the other stored.
+ */
+export function tokenStore(ctx: AppContext, store: string): TokenStore {
   return {
     get: async () => {
       const row = await ctx.storage.getInstallation(store);
@@ -176,64 +201,33 @@ function tokenStore(ctx: AppContext, store: string): TokenStore {
         updated_at: ctx.now(),
       });
     },
-  };
-}
-
-/**
- * Makes sure the stored access token is fresh, refreshing it under a lock in storage:
- * refresh tokens rotate and a reused one revokes the grant, so two isolates or
- * processes must never refresh at once (`HyphaClient` only prevents it within one).
- */
-async function ensureFresh(ctx: AppContext, store: string): Promise<void> {
-  for (let attempt = 0; attempt < 50; attempt++) {
-    const row = await ctx.storage.getInstallation(store);
-    if (!row) return;
-    if (row.expires_at - REFRESH_MARGIN_MS > ctx.now()) return;
-    const now = ctx.now();
-    if (await ctx.storage.tryLockRefresh(store, now, now + 30_000)) {
+    async withLock<T>(_key: string, fn: () => Promise<T>): Promise<T> {
+      const deadline = ctx.now() + LOCK_WAIT_MS;
+      for (;;) {
+        const now = ctx.now();
+        if (await ctx.storage.tryLockRefresh(store, now, now + REFRESH_LOCK_MS)) break;
+        if (now >= deadline)
+          throw new Error(`another process is refreshing ${store}'s tokens; try again`);
+        await sleep(LOCK_POLL_MS);
+      }
       try {
-        const latest = await ctx.storage.getInstallation(store);
-        if (!latest || latest.expires_at - REFRESH_MARGIN_MS > ctx.now()) return;
-        const current = await readTokens(ctx, latest);
-        const next = await refresh({
-          apiUrl: latest.api_url,
-          manifestUrl: manifestUrl(ctx),
-          refreshToken: current.refreshToken,
-          fetch: ctx.fetch,
-          now: ctx.now,
-        });
-        await tokenStore(ctx, store).set(next);
+        return await fn();
       } finally {
         await ctx.storage.unlockRefresh(store);
       }
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 200));
-  }
+    },
+  };
 }
 
-/** The admin API as the installation's app, with a fresh token. */
-export async function readerFor(ctx: AppContext, row: InstallationRow): Promise<HyphaReader> {
-  await ensureFresh(ctx, row.store);
+/** The admin API as the installation's app; its token refreshes under the row's lock. */
+export function readerFor(ctx: AppContext, row: InstallationRow): HyphaReader {
   const client = new HyphaClient({
     apiUrl: row.api_url,
     manifestUrl: manifestUrl(ctx),
     tokens: tokenStore(ctx, row.store),
     fetch: ctx.fetch,
     now: ctx.now,
-    refreshMarginMs: REFRESH_MARGIN_MS / 2,
+    refreshMarginMs: REFRESH_MARGIN_MS,
   });
   return new HyphaReader(client);
-}
-
-/** The installations a request may come from: the one it names, else every one. */
-export async function candidates(
-  ctx: AppContext,
-  store: string | null | undefined,
-): Promise<InstallationRow[]> {
-  if (store) {
-    const row = await ctx.storage.getInstallation(store);
-    return row ? [row] : [];
-  }
-  return ctx.storage.listInstallations();
 }

@@ -68,7 +68,7 @@ export async function install(
   const row: InstallationRow = {
     store: STORE,
     api_url: API,
-    scopes: "products:read markets:read pricing:read inventory:read channels:read stores:read",
+    scopes: "products:read markets:read pricing:read inventory:read channels:read",
     access_token: await ctx.vault.seal("hypha_at_x", `${STORE}:access_token`),
     refresh_token: await ctx.vault.seal("hypha_rt_x", `${STORE}:refresh_token`),
     expires_at: now + 3_600_000,

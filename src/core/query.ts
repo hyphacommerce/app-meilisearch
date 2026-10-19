@@ -21,14 +21,14 @@
 // word only (Hypha's reference matches every word as a prefix), its own ranking, and
 // filters that compare strings ignoring case.
 
-import type { PointRequest, PointResponse } from "@hypha/app";
+import type { SearchQueryRequest, SearchQueryResponse } from "@hypha/app";
 
 import { optionAttribute } from "./documents.ts";
 import { MAX_FACET_VALUES } from "./index-settings.ts";
 import { type MeiliClient, type MeiliSearchQuery, type MeiliSearchResult, quote } from "./meili.ts";
 
-export type SearchRequest = PointRequest<"search.query">;
-export type SearchResponse = PointResponse<"search.query">;
+export type SearchRequest = SearchQueryRequest;
+export type SearchResponse = SearchQueryResponse;
 type FacetCounts = NonNullable<SearchResponse["facets"]>[number];
 
 /** The attribute a facet key (`vendor`, `option.color`, …) lives in; unknown keys have none. */

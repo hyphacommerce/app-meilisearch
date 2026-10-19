@@ -318,7 +318,7 @@ export async function step(ctx: AppContext, store: string): Promise<StepResult> 
     leased = await lease(cacheRange, 5);
     if (leased.length > 0) {
       did = "caches";
-      const reader = await readerFor(ctx, row);
+      const reader = readerFor(ctx, row);
       for (const mark of leased) {
         if (mark.target === "all") await rebuildEverything(ctx, row, reader, meili);
         else await refreshCache(ctx, store, reader, mark.target);
@@ -339,7 +339,7 @@ export async function step(ctx: AppContext, store: string): Promise<StepResult> 
     leased = await lease([PRIORITY.expand, PRIORITY.expand], 5);
     if (leased.length > 0) {
       did = "expanded";
-      const reader = await readerFor(ctx, row);
+      const reader = readerFor(ctx, row);
       for (const mark of leased) {
         await expand(ctx, store, reader, mark);
         await ctx.storage.finish(store, mark);
@@ -350,7 +350,7 @@ export async function step(ctx: AppContext, store: string): Promise<StepResult> 
     leased = await lease([PRIORITY.product, PRIORITY.product], ctx.config.batch);
     if (leased.length === 0) return { more: false, did: "nothing", marks: 0 };
     did = "products";
-    const reader = await readerFor(ctx, row);
+    const reader = readerFor(ctx, row);
     await rebuildProducts(
       ctx,
       row,

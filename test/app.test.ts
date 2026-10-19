@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { signRequest, signSessionToken } from "@hypha/app";
 
 import { createApp } from "../src/core/app.ts";
+import { readerFor } from "../src/core/installations.ts";
 import { APP_KEY, SCOPES } from "../src/core/manifest.ts";
 import { API, MEILI, SECRET, STORE, type Route, get, harness, install } from "./harness.ts";
 
@@ -44,12 +45,13 @@ test("install: /install starts OAuth with PKCE, the callback stores the installa
         refresh_token: "hypha_rt_1",
         scope: SCOPES.join(" "),
         app_secret: SECRET,
+        store: STORE,
+        issuer: API,
       });
     },
-    get("/admin/store", { id: STORE, name: "Shop" }),
     get("/admin/app-extensions/origins", { origins: ["http://admin.test"] }),
   ];
-  const { ctx } = await harness(oauth);
+  const { ctx, requests } = await harness(oauth);
   const app = createApp(ctx);
 
   const start = await app.request(`/install?api=${encodeURIComponent(API)}`);
@@ -70,10 +72,61 @@ test("install: /install starts OAuth with PKCE, the callback stores the installa
   assert.equal(await ctx.vault.open(row.app_secret, `${STORE}:app_secret`), SECRET);
   assert.notEqual(row.access_token, "hypha_at_1");
   assert.deepEqual(JSON.parse(row.admin_origins), ["http://admin.test"]);
+  // The token response names the store: nothing else is read to learn it.
+  assert.deepEqual(
+    requests.map((r) => new URL(r.url).pathname),
+    ["/oauth/token", "/admin/app-extensions/origins"],
+  );
 
   // The state is single use.
   const replay = await app.request(`/hypha/oauth/callback?code=hypha_ac_1&state=${state}`);
   assert.equal(replay.status, 400);
+});
+
+test("the manifest asks for no stores:read: the token response names the store", () => {
+  assert.ok(!(SCOPES as readonly string[]).includes("stores:read"));
+});
+
+test("an expired token is refreshed once, under the installation's lock", async () => {
+  let refreshes = 0;
+  const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+  const routes: Route[] = [
+    async (request, url) => {
+      if (url.pathname !== "/oauth/token") return undefined;
+      refreshes++;
+      const form = new URLSearchParams(await request.text());
+      assert.equal(form.get("refresh_token"), "hypha_rt_x");
+      await gate;
+      return Response.json({
+        access_token: "hypha_at_2",
+        token_type: "Bearer",
+        expires_in: 3600,
+        refresh_token: "hypha_rt_2",
+        scope: SCOPES.join(" "),
+        store: STORE,
+        issuer: API,
+      });
+    },
+    (request, url) => {
+      if (url.pathname !== "/admin/markets") return undefined;
+      assert.equal(request.headers.get("authorization"), "Bearer hypha_at_2");
+      return Response.json({ items: [] });
+    },
+  ];
+  const { ctx } = await harness(routes);
+  const row = await install(ctx, { expires_at: ctx.now() - 1 });
+  // Two readers, as two isolates would have: separate clients, one database.
+  const both = Promise.all([readerFor(ctx, row).markets(), readerFor(ctx, row).markets()]);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  release();
+  await both;
+  assert.equal(refreshes, 1);
+  const stored = await ctx.storage.getInstallation(STORE);
+  assert.equal(
+    await ctx.vault.open(stored?.refresh_token ?? "", `${STORE}:refresh_token`),
+    "hypha_rt_2",
+  );
+  assert.equal(stored?.refresh_lock_until, 0);
 });
 
 test("install refuses an API outside the allow-list", async () => {

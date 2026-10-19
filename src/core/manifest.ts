@@ -18,8 +18,6 @@ export const SCOPES = [
   "inventory:read",
   // `channel.*` events: which channels a product is published to.
   "channels:read",
-  // The store's ID: the token response doesn't say which store installed the app.
-  "stores:read",
 ] as const;
 
 export const WEBHOOK_EVENTS = [
@@ -59,7 +57,6 @@ export function manifest(appUrl: string) {
       "pricing:read": "Documents carry each market's price, for filters and sorting",
       "inventory:read": "Shoppers can filter by availability in their market",
       "channels:read": "Searches show only what the storefront's channel sells",
-      "stores:read": "To know which store installed the app",
     },
     privacy_url: `${appUrl}${PATHS.privacy}`,
     publisher: "Hypha",

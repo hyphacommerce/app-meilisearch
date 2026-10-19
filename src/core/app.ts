@@ -22,7 +22,7 @@ import { MeiliError } from "./meili.ts";
 import { landingPage, messagePage, privacyPage, settingsPage } from "./pages.ts";
 import { search } from "./query.ts";
 import { SettingsError, authenticate, reindex, save, view } from "./settings.ts";
-import { handleWebhook } from "./webhooks.ts";
+import { webhooks } from "./webhooks.ts";
 
 /** How long a kicked runner may work (a Worker's `waitUntil` lasts 30 s after the response). */
 const KICK_BUDGET_MS = 20_000;
@@ -98,8 +98,8 @@ export function createApp(ctx: AppContext) {
   const kick = kicker(ctx);
 
   const extensions = extensionHandler({
-    secret: async (request) => {
-      const store = request.headers.get("Hypha-Store");
+    // `Hypha-Store` picks the installation; its secret must sign the call.
+    secret: async ({ store }) => {
       const row = store ? await ctx.storage.getInstallation(store) : undefined;
       return row ? appSecret(ctx, row) : undefined;
     },
@@ -150,11 +150,8 @@ export function createApp(ctx: AppContext) {
     }
   });
 
-  app.post(PATHS.webhooks, async (c) => {
-    const outcome = await handleWebhook(ctx, c.req.raw);
-    if (outcome.status === 200 && outcome.code === "accepted" && outcome.marks > 0) kick();
-    return c.json(outcome, outcome.status);
-  });
+  const webhook = webhooks(ctx, { onMarked: () => kick() });
+  app.post(PATHS.webhooks, (c) => webhook(c.req.raw));
 
   app.post(PATHS.extensions, (c) => extensions(c.req.raw));
 

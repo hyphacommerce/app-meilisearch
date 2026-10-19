@@ -58,10 +58,6 @@ export class HyphaReader {
     return documented<T>(response);
   }
 
-  async store(): Promise<AdminSchemas["StoreResponse"]> {
-    return this.#get("the store", "/admin/store");
-  }
-
   async adminOrigins(): Promise<string[]> {
     const body = await this.#get<AdminSchemas["OriginsResponse"]>(
       "the admin origins",

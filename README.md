@@ -22,14 +22,15 @@ One core on Web APIs (`src/core/`), two hosts:
   `state`) and redirects to the API's `/oauth/authorize`; the client ID is the manifest URL,
   `<app_url>/manifest.json`. A staff member approves on the admin's consent page; the
   callback (`/hypha/oauth/callback`) exchanges the code, keeps the tokens and the app secret
-  (sealed with AES-256-GCM under `APP_ENCRYPTION_KEY`), reads the store's ID and its admin
-  origins, and queues a full build. Installations are keyed by store, so one deployment
-  serves any number of Hypha stores. Refresh tokens rotate; refreshes take a lock in the
-  app's database so two isolates never reuse one.
+  (sealed with AES-256-GCM under `APP_ENCRYPTION_KEY`), keyed by the store the token
+  response names (`store`), reads the store's admin origins, and queues a full build.
+  Installations are keyed by store, so one deployment serves any number of Hypha stores.
+  Refresh tokens rotate: `HyphaClient` refreshes inside the token store's `withLock`, here
+  a lock on the installation's row in the app's database, so two isolates never reuse one
+  (the one that waited reads the pair the other stored).
 - **Scopes:** `products:read`, `markets:read`, `pricing:read`, `inventory:read`,
-  `channels:read` (each the `x-hypha-scopes` of the admin routes it reads, and what the
-  subscribed events' subjects need to be delivered), and `stores:read` (the token response
-  doesn't say which store installed the app).
+  `channels:read`: each the `x-hypha-scopes` of the admin routes it reads, and what the
+  subscribed events' subjects need to be delivered.
 - **Documents** (design note 0019, §3): one per variant per market, as Hypha builds its own:
   only active products in the market's catalog whose price resolves in the market's currency
   (fixed price, else the list's adjustment rounded half away from zero, else the base
@@ -39,8 +40,11 @@ One core on Web APIs (`src/core/`), two hosts:
   and filters stay exact per variant ("Red" and "XL" match only a variant that is both).
   Option facets live in `opt.<hex of the lowercased option name>`, so any option name is a
   safe attribute.
-- **Sync:** webhooks (`/hypha/webhooks`, `Hypha-Signature` checked with `@hypha/app`,
-  deduped by `Hypha-Delivery-Id`) become coalesced marks, as Hypha's own search queue does:
+- **Sync:** webhooks (`/hypha/webhooks`, `@hypha/app`'s `webhookHandler`: `Hypha-Store`
+  picks the installation whose secret must sign the body, the typed envelope is parsed,
+  deliveries are deduped by `Hypha-Delivery-Id`, and a failure answers 500 so Hypha
+  retries) become coalesced marks, as Hypha's own search queue does. Payload IDs are
+  checked to be prefixed (`prod_`, `var_`, `cat_`, `pl_`, `pcat_`); a bare UUID is refused.
   `product.*` marks the product; stock and price events mark variants (their product is
   known from the last build); catalog and price-list membership events refresh the app's
   copy of the catalog or list, then mark products; category moves mark the subtree's
@@ -64,7 +68,10 @@ One core on Web APIs (`src/core/`), two hosts:
   sort, group, filter, page and facet count answers exactly as Hypha's reference search: the
   integration test runs a battery of 136 queries against both, and the end-to-end test
   compares `/storefront/search` through the app with the built-in engine.
-- **Settings page** (`/settings`, target `settings.app`): the admin frames it; it asks for a
+- **Settings page** (`/settings`, target `settings.app`): the admin frames it with
+  `?origin=<its origin>` (`docs/apps/bridge.md`), which the page trusts only when it's one
+  of the stores' admin origins (read with the installation's token from `GET
+  /admin/app-extensions/origins`) or `ADMIN_ORIGINS`; it then asks for a
   session token through `@hypha/app-bridge` for every call to the app's backend
   (`/api/settings`, `/api/reindex`), which verifies it (HS256 under the app's secret, for
   `app_meilisearch`, with `products:read`). Meilisearch URL, admin API key (checked against

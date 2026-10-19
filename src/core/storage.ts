@@ -68,9 +68,10 @@ export interface Storage {
   /** The state, removed so it can't be used twice. */
   takeOAuthState(state: string): Promise<OAuthState | undefined>;
 
-  /** `true` the first time a delivery is seen. */
+  /** Whether the delivery was handled (`recordDelivery`). */
+  hasDelivery(store: string, delivery: string): Promise<boolean>;
+  /** Records a handled delivery; `true` the first time. */
   recordDelivery(store: string, delivery: string, now: number): Promise<boolean>;
-  forgetDelivery(store: string, delivery: string): Promise<void>;
   /** Drops deliveries and authorization states older than `before`. */
   prune(before: number): Promise<void>;
 
@@ -228,11 +229,12 @@ export class SqlStorage implements Storage {
     return changes > 0;
   }
 
-  async forgetDelivery(store: string, delivery: string) {
-    await this.#db.run("DELETE FROM deliveries WHERE store = ? AND delivery = ?", [
-      store,
-      delivery,
-    ]);
+  async hasDelivery(store: string, delivery: string) {
+    const row = await this.#db.first<{ n: number }>(
+      "SELECT 1 AS n FROM deliveries WHERE store = ? AND delivery = ?",
+      [store, delivery],
+    );
+    return row !== undefined;
   }
 
   async prune(before: number) {

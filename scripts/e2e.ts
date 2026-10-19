@@ -140,11 +140,22 @@ const pending = await admin("GET", `/admin/oauth/requests/${requestId}`);
 console.log(`   ${JSON.stringify(pending).slice(0, 300)}`);
 const approved = await admin("POST", `/admin/oauth/requests/${requestId}/approve`);
 const callback = await fetch(approved.redirect_to);
-assert.equal(callback.status, 200, await callback.clone().text());
+const installedPage = await callback.text();
+assert.equal(callback.status, 200, installedPage);
 
-step("the app is installed with its grant");
+step("the app is installed with its grant, for the store the token response named");
 const installed = await admin("GET", `/admin/apps/${APP_KEY}`);
 console.log(`   grant: ${JSON.stringify(installed.grant?.scopes ?? installed.grant)}`);
+const store = (await admin("GET", "/admin/store")).id;
+assert.ok(installedPage.includes(store), `the install page names ${store}`);
+
+step("app.installed arrives after the code exchange and verifies (Hypha-Store picks the secret)");
+await until("app.installed delivered", async () => {
+  const page = await admin("GET", `/admin/apps/${APP_KEY}/deliveries?limit=50`);
+  const delivery = page.items.find((d: any) => d.event_type === "app.installed");
+  if (delivery?.status === "failed") throw new Error(`app.installed: ${delivery.last_error}`);
+  return delivery?.status === "succeeded" ? delivery : undefined;
+});
 
 step("settings through a session token: connect Meilisearch");
 const saved = await app("PUT", "/api/settings", {
@@ -162,6 +173,7 @@ const built = await until("the full index", async () => {
 });
 await meiliIdle();
 const indexes = await app("GET", "/api/settings");
+assert.equal(indexes.store, store);
 for (const index of indexes.status.indexes)
   console.log(`   ${index.uid}: ${index.documents} documents`);
 const total = indexes.status.indexes.reduce((n: number, i: any) => n + (i.documents ?? 0), 0);
@@ -228,12 +240,22 @@ const kettle = await until("the storefront to find it", async () => {
   return found.items.some((i: any) => i.product === product.id) ? found : undefined;
 });
 assert.equal(kettle.items[0].title, title);
-const deliveries = await admin("GET", `/admin/apps/${APP_KEY}/deliveries?limit=20`);
+const deliveries = await until("the product.updated delivery to succeed", async () => {
+  const page = await admin("GET", `/admin/apps/${APP_KEY}/deliveries?limit=20`);
+  const updated = page.items.find((d: any) => d.event_type === "product.updated");
+  return updated?.status === "succeeded" ? page : undefined;
+});
 console.log(
   `   deliveries: ${deliveries.items
     .slice(0, 5)
-    .map((d: any) => `${d.event_type ?? d.type ?? "?"}:${d.status}`)
+    .map((d: any) => `${d.event_type}:${d.status}/${d.attempts}`)
     .join(", ")}`,
+);
+const failed = deliveries.items.filter((d: any) => d.status !== "succeeded" && d.attempts > 0);
+assert.deepEqual(
+  failed.map((d: any) => `${d.event_type}: ${d.last_error}`),
+  [],
+  "every delivery attempted succeeded",
 );
 const last = (await admin("GET", `/admin/apps/${APP_KEY}/extension-calls?limit=1`)).items[0];
 assert.equal(last.point, "search.query");
