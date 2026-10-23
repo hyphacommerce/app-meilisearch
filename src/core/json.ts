@@ -13,7 +13,7 @@ export function stringField(value: unknown, field: string): string | undefined {
 
 /**
  * A response body typed as the API documents it. The APIs this app calls (Hypha's,
- * generated into `@hypha/sdk`'s types, and Meilisearch's) are trusted for their shapes.
+ * generated into `@hyphacommerce/sdk`'s types, and Meilisearch's) are trusted for their shapes.
  */
 export async function documented<T>(response: Response): Promise<T> {
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a documented API shape

@@ -9,7 +9,7 @@
 // than silently marking nothing. The envelope's `subject.id` is prefixed the same way
 // for every kind with an ID type (`chan_`, `pcat_`, `loc_` since 0029's as-built).
 
-import type { WebhookEnvelope } from "@hypha/app";
+import type { WebhookEnvelope } from "@hyphacommerce/app";
 
 /** Targets and their priority (lower first). Caches are rebuilt before products. */
 export const PRIORITY = {
@@ -52,7 +52,7 @@ export const productsFrom = (cursor: string): MarkTarget => ({
   priority: PRIORITY.expand,
 });
 
-/** An event as Hypha delivers it (design note 0016, EV5), parsed by `@hypha/app`. */
+/** An event as Hypha delivers it (design note 0016, EV5), parsed by `@hyphacommerce/app`. */
 export type EventEnvelope = WebhookEnvelope;
 
 /** The prefixes of the IDs payloads carry (`hypha_core::define_id!`). */

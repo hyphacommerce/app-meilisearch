@@ -6,7 +6,7 @@
 //
 // Pure functions over the admin API's responses: `indexer.ts` loads the inputs.
 
-import type { AdminSchemas } from "@hypha/sdk/admin";
+import type { AdminSchemas } from "@hyphacommerce/sdk/admin";
 
 import { toHex, utf8 } from "./crypto.ts";
 

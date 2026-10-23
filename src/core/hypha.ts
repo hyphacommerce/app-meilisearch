@@ -1,8 +1,8 @@
 // Reading what search needs from Hypha's admin API, as the app (its OAuth token): the
 // scopes in the manifest are exactly these routes' `x-hypha-scopes`.
 
-import type { HyphaClient } from "@hypha/app";
-import type { AdminSchemas } from "@hypha/sdk/admin";
+import type { HyphaClient } from "@hyphacommerce/app";
+import type { AdminSchemas } from "@hyphacommerce/sdk/admin";
 
 import type { InventoryItem, Location, Money, Product } from "./documents.ts";
 import { documented, stringField } from "./json.ts";

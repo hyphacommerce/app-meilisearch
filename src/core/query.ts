@@ -21,7 +21,7 @@
 // word only (Hypha's reference matches every word as a prefix), its own ranking, and
 // filters that compare strings ignoring case.
 
-import type { SearchQueryRequest, SearchQueryResponse } from "@hypha/app";
+import type { SearchQueryRequest, SearchQueryResponse } from "@hyphacommerce/app";
 
 import { optionAttribute } from "./documents.ts";
 import { MAX_FACET_VALUES } from "./index-settings.ts";

@@ -1,7 +1,12 @@
 // The app's routes, on Hono over Web APIs only, so the Workers and Node hosts serve the
 // same thing (`src/hosts/`).
 
-import { ExtensionError, OAuthError, defineExtensionHandler, extensionHandler } from "@hypha/app";
+import {
+  ExtensionError,
+  OAuthError,
+  defineExtensionHandler,
+  extensionHandler,
+} from "@hyphacommerce/app";
 import { Hono } from "hono";
 
 import { SETTINGS_CLIENT_JS } from "../ui/generated/settings-client.ts";

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { signRequest } from "@hypha/app";
+import { signRequest } from "@hyphacommerce/app";
 
 import { type EventEnvelope, marksFor } from "../src/core/events.ts";
 import { webhooks } from "../src/core/webhooks.ts";

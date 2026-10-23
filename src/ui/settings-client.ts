@@ -2,7 +2,7 @@
 // the admin for a session token through the bridge for every call to the app's own
 // backend. Bundled by `scripts/build-ui.ts` into `src/core/ui/generated/`.
 
-import { type Bridge, BridgeError, createBridge } from "@hypha/app-bridge";
+import { type Bridge, BridgeError, createBridge } from "@hyphacommerce/app-bridge";
 
 interface SettingsView {
   store: string;

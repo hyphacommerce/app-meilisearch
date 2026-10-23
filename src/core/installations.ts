@@ -12,7 +12,7 @@ import {
   exchangeCode,
   memoryTokenStore,
   parseAuthorizationResponse,
-} from "@hypha/app";
+} from "@hyphacommerce/app";
 
 import type { AppContext } from "./context.ts";
 import { HyphaReader } from "./hypha.ts";
