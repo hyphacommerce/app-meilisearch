@@ -49,6 +49,7 @@ export function product(spec: {
   return {
     id: id("prod", spec.n),
     handle: spec.title.toLowerCase().replaceAll(" ", "-"),
+    custom_fields: {},
     title: spec.title,
     status: spec.status ?? "active",
     created_at: spec.created,
@@ -63,6 +64,7 @@ export function product(spec: {
     options,
     variants: spec.variants.map((variant) => ({
       id: id("var", variant.n),
+      custom_fields: {},
       price: { amount: variant.price, currency: variant.currency ?? "EUR" },
       requires_shipping: true,
       selections: variant.values.map((label, o) => {
