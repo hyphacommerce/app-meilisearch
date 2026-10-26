@@ -169,10 +169,10 @@ importers:
       '@hono/node-server':
         specifier: 2.1.3
         version: 2.1.3(hono@4.13.12)
-      '@hypha/app':
+      '@hyphacommerce/app':
         specifier: link:../hypha/packages/app
         version: link:../hypha/packages/app
-      '@hypha/sdk':
+      '@hyphacommerce/sdk':
         specifier: link:../hypha/packages/sdk
         version: link:../hypha/packages/sdk
       hono:
@@ -182,7 +182,7 @@ importers:
       '@cloudflare/workers-types':
         specifier: 5.20261003.1
         version: 5.20261003.1
-      '@hypha/app-bridge':
+      '@hyphacommerce/app-bridge':
         specifier: link:../hypha/packages/app-bridge
         version: link:../hypha/packages/app-bridge
       '@types/node':

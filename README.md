@@ -18,7 +18,7 @@ One core on Web APIs (`src/core/`), two hosts:
 
 - **Install** (design note 0029, §4.1): an admin's "Install app" opens
   `GET <app_url>/install?api=<Hypha API base URL>`. The app starts OAuth 2.1 with PKCE
-  (`createAuthorizationUrl` from `@hypha/app`; the verifier stays server-side, keyed by
+  (`createAuthorizationUrl` from `@hyphacommerce/app`; the verifier stays server-side, keyed by
   `state`) and redirects to the API's `/oauth/authorize`; the client ID is the manifest URL,
   `<app_url>/manifest.json`. A staff member approves on the admin's consent page; the
   callback (`/hypha/oauth/callback`) exchanges the code, keeps the tokens and the app secret
@@ -40,7 +40,7 @@ One core on Web APIs (`src/core/`), two hosts:
   and filters stay exact per variant ("Red" and "XL" match only a variant that is both).
   Option facets live in `opt.<hex of the lowercased option name>`, so any option name is a
   safe attribute.
-- **Sync:** webhooks (`/hypha/webhooks`, `@hypha/app`'s `webhookHandler`: `Hypha-Store`
+- **Sync:** webhooks (`/hypha/webhooks`, `@hyphacommerce/app`'s `webhookHandler`: `Hypha-Store`
   picks the installation whose secret must sign the body, the typed envelope is parsed,
   deliveries are deduped by `Hypha-Delivery-Id`, and a failure answers 500 so Hypha
   retries) become coalesced marks, as Hypha's own search queue does. Payload IDs are
@@ -72,7 +72,7 @@ One core on Web APIs (`src/core/`), two hosts:
   `?origin=<its origin>` (`docs/apps/bridge.md`), which the page trusts only when it's one
   of the stores' admin origins (read with the installation's token from `GET
   /admin/app-extensions/origins`) or `ADMIN_ORIGINS`; it then asks for a
-  session token through `@hypha/app-bridge` for every call to the app's backend
+  session token through `@hyphacommerce/app-bridge` for every call to the app's backend
   (`/api/settings`, `/api/reindex`), which verifies it (HS256 under the app's secret, for
   `app_meilisearch`, with `products:read`). Meilisearch URL, admin API key (checked against
   Meilisearch, stored encrypted, never shown again) and index prefix; "Reindex now"; the
@@ -95,7 +95,7 @@ scripts/        e2e.sh / e2e.ts, build-ui.ts, bundle-node.ts
 
 ## Developing
 
-It links Hypha's SDK packages (`@hypha/app`, `@hypha/sdk`, `@hypha/app-bridge`) from a
+It links Hypha's SDK packages (`@hyphacommerce/app`, `@hyphacommerce/sdk`, `@hyphacommerce/app-bridge`) from a
 Hypha checkout next to this one (`../hypha`, with `pnpm install` run there).
 
 ```bash

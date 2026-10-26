@@ -3,7 +3,7 @@
 // route's `x-hypha-scopes`) and what the events' subjects need to be delivered
 // (`hypha_apps::event_scope`); no personal data.
 
-import { MANIFEST_SCHEMA_URL, defineManifest } from "@hypha/app";
+import { MANIFEST_SCHEMA_URL, defineManifest } from "@hyphacommerce/app";
 
 export const APP_KEY = "app_meilisearch";
 

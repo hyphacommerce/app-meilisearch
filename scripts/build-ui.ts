@@ -1,4 +1,4 @@
-// Bundles the settings page's script (src/ui/settings-client.ts, with @hypha/app-bridge)
+// Bundles the settings page's script (src/ui/settings-client.ts, with @hyphacommerce/app-bridge)
 // into a string module both hosts serve at /settings.js. The output is committed;
 // `--check` fails while it's stale (CI runs it).
 

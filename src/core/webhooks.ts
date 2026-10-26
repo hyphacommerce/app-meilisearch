@@ -1,5 +1,5 @@
 // Hypha's webhooks (design note 0016, §8): a signed event envelope per delivery, through
-// `@hypha/app`'s `webhookHandler`. `Hypha-Store` names the installation, whose secret
+// `@hyphacommerce/app`'s `webhookHandler`. `Hypha-Store` names the installation, whose secret
 // must sign the body (so the header is proven once the signature checks out); the
 // delivery ID dedupes retries, and the event becomes marks (`events.ts`).
 //
@@ -8,7 +8,7 @@
 // `handler_failed` (a payload that breaks its promise, or storage failing: Hypha retries
 // and shows it in the admin's delivery log).
 
-import { type WebhookEnvelope, webhookHandler } from "@hypha/app";
+import { type WebhookEnvelope, webhookHandler } from "@hyphacommerce/app";
 
 import type { AppContext } from "./context.ts";
 import { marksFor } from "./events.ts";

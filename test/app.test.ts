@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { signRequest, signSessionToken } from "@hypha/app";
+import { signRequest, signSessionToken } from "@hyphacommerce/app";
 
 import { createApp } from "../src/core/app.ts";
 import { readerFor } from "../src/core/installations.ts";

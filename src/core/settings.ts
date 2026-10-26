@@ -2,7 +2,7 @@
 // token the admin issued through the bridge (HS256 under the app's secret, a minute
 // long, for this app), which says the store and the staff member's scopes.
 
-import { SessionTokenError, verifySessionToken } from "@hypha/app";
+import { SessionTokenError, verifySessionToken } from "@hyphacommerce/app";
 
 import type { AppContext } from "./context.ts";
 import { fromBase64Url } from "./crypto.ts";
