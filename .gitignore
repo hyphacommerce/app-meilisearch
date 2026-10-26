@@ -6,3 +6,4 @@ wrangler.toml
 *.sqlite
 *.sqlite-*
 .env*
+.DS_Store
