@@ -53,21 +53,42 @@ export interface SearchDocument {
   position: number;
 }
 
-/** A market as pricing needs it: its currency, catalog and the catalog's price list. */
+/** Which products a list's adjustment reaches, as Hypha's `applies_to`. */
+export type AppliesTo =
+  | { type: "all" }
+  | { type: "products"; products: readonly string[] }
+  | { type: "categories"; categories: readonly string[] };
+
+/** A price list live now for a shopper who isn't signed in, as pricing needs it. */
+export interface LivePriceList {
+  id: string;
+  currency: string;
+  /** `null`: the list prices only the variants it has fixed prices for. */
+  adjustment: { percentBps: number; appliesTo: AppliesTo } | null;
+}
+
+/** A market as pricing needs it: its currency, catalog and the catalog's live price lists. */
 export interface MarketContext {
   id: string;
   currency: string;
   /** `null`: the market sells nothing. */
   catalog: string | null;
-  /** The catalog's price list, `null` without one. `missing` when it couldn't be found. */
-  priceList: { id: string; currency: string; adjustmentBps: number } | "missing" | null;
+  /**
+   * The catalog's lists live now for a shopper who isn't signed in (active, within
+   * their window, for everyone), oldest first. `missing` when one couldn't be read.
+   */
+  priceLists: LivePriceList[] | "missing";
 }
 
 export interface PricingInput {
   /** Whether the market's catalog includes the product. */
   inCatalog: boolean;
-  /** The price list's fixed prices for the product's variants. */
-  fixed: ReadonlyMap<string, Money>;
+  /** The product's ID, for adjustments scoped to products. */
+  product: string;
+  /** The product's categories with their ancestors, hidden ones included: what a scoped adjustment matches. */
+  categories: ReadonlySet<string>;
+  /** Fixed prices for the product's variants, by price list, by variant. */
+  fixed: ReadonlyMap<string, ReadonlyMap<string, Money>>;
 }
 
 export interface StockInput {
@@ -95,9 +116,20 @@ export function adjust(amount: number, bps: number): number | undefined {
   return Number(result);
 }
 
+/** Whether an adjustment reaches the product. */
+export function covers(appliesTo: AppliesTo, pricing: PricingInput): boolean {
+  if (appliesTo.type === "all") return true;
+  if (appliesTo.type === "products") return appliesTo.products.includes(pricing.product);
+  return appliesTo.categories.some((c) => pricing.categories.has(c));
+}
+
 /**
- * The variant's price in the market (Hypha's `resolve_price`), or `undefined` when it
- * isn't sold there: no catalog, the product isn't in it, or a currency doesn't match.
+ * The variant's price in the market for a shopper who isn't signed in, at a quantity of
+ * one (Hypha's `resolve_price`): the lowest price among the live lists that price the
+ * variant (a fixed price, else the base price adjusted when the adjustment reaches the
+ * product), ties to the oldest list, else the base price. `undefined` when it isn't
+ * sold there: no catalog, the product isn't in it, a list couldn't be read, or a
+ * currency doesn't match.
  */
 export function resolvePrice(
   market: MarketContext,
@@ -106,13 +138,26 @@ export function resolvePrice(
   base: Money,
 ): number | undefined {
   if (market.catalog === null || !pricing.inCatalog) return undefined;
-  const list = market.priceList;
-  if (list === null) return base.currency === market.currency ? base.amount : undefined;
-  if (list === "missing" || list.currency !== market.currency) return undefined;
-  const fixed = pricing.fixed.get(variant);
-  if (fixed) return fixed.currency === market.currency ? fixed.amount : undefined;
-  if (base.currency !== market.currency) return undefined;
-  return adjust(base.amount, list.adjustmentBps);
+  const lists = market.priceLists;
+  if (lists === "missing") return undefined;
+  let best: number | undefined;
+  for (const list of lists) {
+    if (list.currency !== market.currency) return undefined;
+    const fixed = pricing.fixed.get(list.id)?.get(variant);
+    let candidate: number | undefined;
+    if (fixed) {
+      if (fixed.currency !== market.currency) return undefined;
+      candidate = fixed.amount;
+    } else if (list.adjustment && covers(list.adjustment.appliesTo, pricing)) {
+      if (base.currency !== market.currency) return undefined;
+      candidate = adjust(base.amount, list.adjustment.percentBps);
+      if (candidate === undefined) return undefined;
+    } else continue;
+    // Strictly lower: a tie keeps the older list, as Hypha's resolution does.
+    if (best === undefined || candidate < best) best = candidate;
+  }
+  if (best !== undefined) return best;
+  return base.currency === market.currency ? base.amount : undefined;
 }
 
 /**
@@ -199,6 +244,19 @@ export function expandCategories(direct: readonly string[], tree: CategoryTree):
     for (const ancestor of tree.ancestors(id)) out.add(ancestor);
   }
   return [...out].toSorted();
+}
+
+/** The product's categories and their ancestors, hidden ones included. */
+export function categoriesWithAncestors(
+  direct: readonly string[],
+  tree: CategoryTree,
+): Set<string> {
+  const out = new Set<string>();
+  for (const id of direct) {
+    out.add(id);
+    for (const ancestor of tree.ancestors(id)) out.add(ancestor);
+  }
+  return out;
 }
 
 type CategoryNode = AdminSchemas["CategoryNode"];

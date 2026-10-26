@@ -8,13 +8,16 @@
 
 import type { AppContext } from "./context.ts";
 import {
+  type AppliesTo,
   CategoryTree,
   type InventoryItem,
+  type LivePriceList,
   type Location,
   type MarketContext,
   type Money,
   type SearchDocument,
   buildDocuments,
+  categoriesWithAncestors,
   expandCategories,
 } from "./documents.ts";
 import { PRIORITY, all, product as productMark, productsFrom } from "./events.ts";
@@ -53,21 +56,33 @@ export async function loadStoreContext(reader: HyphaReader): Promise<StoreContex
   const contexts = await Promise.all(
     markets.map(async (market): Promise<MarketContext> => {
       if (!market.catalog)
-        return { id: market.id, currency: market.currency, catalog: null, priceList: null };
+        return { id: market.id, currency: market.currency, catalog: null, priceLists: [] };
       const catalog = await reader.catalog(market.catalog);
-      const listId = catalog.price_list ?? null;
-      const list = listId ? byId.get(listId) : undefined;
-      return {
-        id: market.id,
-        currency: market.currency,
-        catalog: catalog.id,
-        priceList:
-          listId === null
-            ? null
-            : list
-              ? { id: list.id, currency: list.currency, adjustmentBps: list.adjustment_bps }
-              : "missing",
-      };
+      const live: LivePriceList[] = [];
+      for (const id of catalog.price_lists) {
+        const list = byId.get(id);
+        if (!list)
+          return {
+            id: market.id,
+            currency: market.currency,
+            catalog: catalog.id,
+            priceLists: "missing",
+          };
+        if (!livesForEveryone(list)) continue;
+        live.push({
+          id: list.id,
+          currency: list.currency,
+          adjustment: list.adjustment
+            ? {
+                percentBps: list.adjustment.percent_bps,
+                appliesTo: (list.adjustment.applies_to ?? { type: "all" }) as AppliesTo,
+              }
+            : null,
+        });
+      }
+      // IDs are UUIDv7: their order is the lists' age, which breaks ties.
+      live.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+      return { id: market.id, currency: market.currency, catalog: catalog.id, priceLists: live };
     }),
   );
   const serving = new Map<string, Location[]>();
@@ -80,6 +95,16 @@ export async function loadStoreContext(reader: HyphaReader): Promise<StoreContex
     tree: new CategoryTree(categories),
     splitBy: settings.split_by,
   };
+}
+
+/**
+ * Whether a list prices search documents: live now (Hypha's `phase`, read when the
+ * context is loaded; `price_list.started` / `.ended` rebuild everything on a boundary)
+ * and for everyone. A list for customer groups never prices a shopper who isn't
+ * signed in, which is who a search is priced for.
+ */
+function livesForEveryone(list: Awaited<ReturnType<HyphaReader["priceLists"]>>[number]): boolean {
+  return list.phase === "active" && list.audience.groups.length === 0;
 }
 
 /** Gives each market's index its settings, once per settings version. */
@@ -140,7 +165,7 @@ async function rebuildEverything(
   const lists = new Set<string>();
   for (const market of context.markets) {
     if (market.catalog) catalogs.add(market.catalog);
-    if (market.priceList && market.priceList !== "missing") lists.add(market.priceList.id);
+    if (market.priceLists !== "missing") for (const list of market.priceLists) lists.add(list.id);
   }
   for (const id of catalogs) await refreshCache(ctx, row.store, reader, `catalog:${id}`);
   for (const id of lists) await refreshCache(ctx, row.store, reader, `price_list:${id}`);
@@ -206,13 +231,15 @@ async function loadProduct(
   const fixed = new Map<string, Map<string, Money>>();
   const variants = product?.variants.map((v) => v.id) ?? [];
   for (const market of context.markets) {
-    const list = market.priceList;
-    if (!list || list === "missing" || fixed.has(list.id) || variants.length === 0) continue;
-    const prices = await ctx.storage.fixedPrices(store, list.id, variants);
-    fixed.set(
-      list.id,
-      new Map(prices.map((p) => [p.variant, { amount: p.amount, currency: p.currency }])),
-    );
+    if (market.priceLists === "missing" || variants.length === 0) continue;
+    for (const list of market.priceLists) {
+      if (fixed.has(list.id)) continue;
+      const prices = await ctx.storage.fixedPrices(store, list.id, variants);
+      fixed.set(
+        list.id,
+        new Map(prices.map((p) => [p.variant, { amount: p.amount, currency: p.currency }])),
+      );
+    }
   }
   return {
     id,
@@ -232,12 +259,14 @@ export function documentsByMarket(
   const categories = loaded.product
     ? expandCategories(loaded.product.categories, context.tree)
     : [];
+  const priced = loaded.product
+    ? categoriesWithAncestors(loaded.product.categories, context.tree)
+    : new Set<string>();
   for (const market of context.markets) {
     if (!loaded.product) {
       out.set(market.id, []);
       continue;
     }
-    const list = market.priceList;
     out.set(
       market.id,
       buildDocuments({
@@ -245,7 +274,9 @@ export function documentsByMarket(
         market,
         pricing: {
           inCatalog: market.catalog !== null && loaded.catalogs.has(market.catalog),
-          fixed: (list && list !== "missing" && loaded.fixed.get(list.id)) || new Map(),
+          product: loaded.id,
+          categories: priced,
+          fixed: loaded.fixed,
         },
         stock: { items: loaded.stock, locations: context.serving.get(market.id) ?? [] },
         splitBy: context.splitBy,

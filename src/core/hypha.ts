@@ -75,9 +75,8 @@ export class HyphaReader {
   }
 
   async priceLists(): Promise<PriceList[]> {
-    return (
-      await this.#get<AdminSchemas["PriceListListResponse"]>("price lists", "/admin/price-lists")
-    ).items;
+    return (await this.#get<AdminSchemas["PriceListPage"]>("price lists", "/admin/price-lists"))
+      .items;
   }
 
   async locations(): Promise<Location[]> {
