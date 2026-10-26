@@ -3,7 +3,10 @@ import { test } from "node:test";
 
 import {
   CategoryTree,
+  type LivePriceList,
   type MarketContext,
+  type Money,
+  type PricingInput,
   adjust,
   buildDocuments,
   descriptionText,
@@ -27,14 +30,28 @@ import {
   stockLocation,
 } from "./fixtures.ts";
 
-const eu: MarketContext = { id: MARKET_EU, currency: "EUR", catalog: CATALOG_EU, priceList: null };
+const eu: MarketContext = { id: MARKET_EU, currency: "EUR", catalog: CATALOG_EU, priceLists: [] };
+const ukList: LivePriceList = {
+  id: LIST_UK,
+  currency: "GBP",
+  adjustment: { percentBps: -1000, appliesTo: { type: "all" } },
+};
 const uk: MarketContext = {
   id: MARKET_UK,
   currency: "GBP",
   catalog: CATALOG_UK,
-  priceList: { id: LIST_UK, currency: "GBP", adjustmentBps: -1000 },
+  priceLists: [ukList],
 };
 const noFixed = new Map();
+/** Pricing for a product no scoped adjustment names, in the catalog. */
+const plain: PricingInput = {
+  inCatalog: true,
+  product: "p",
+  categories: new Set(),
+  fixed: noFixed,
+};
+const fixedOn = (list: string, variant: string, money: Money) =>
+  new Map([[list, new Map([[variant, money]])]]);
 
 test("adjust rounds half away from zero, like Money::adjust", () => {
   assert.equal(adjust(1000, -1000), 900);
@@ -46,46 +63,100 @@ test("adjust rounds half away from zero, like Money::adjust", () => {
 
 test("a product outside the market's catalog has no price", () => {
   const base = { amount: 1000, currency: "EUR" };
-  assert.equal(resolvePrice(eu, { inCatalog: false, fixed: noFixed }, "v", base), undefined);
-  assert.equal(
-    resolvePrice({ ...eu, catalog: null }, { inCatalog: true, fixed: noFixed }, "v", base),
-    undefined,
-  );
+  assert.equal(resolvePrice(eu, { ...plain, inCatalog: false }, "v", base), undefined);
+  assert.equal(resolvePrice({ ...eu, catalog: null }, plain, "v", base), undefined);
 });
 
 test("without a price list the base price counts only in the market's currency", () => {
-  const pricing = { inCatalog: true, fixed: noFixed };
-  assert.equal(resolvePrice(eu, pricing, "v", { amount: 1000, currency: "EUR" }), 1000);
-  assert.equal(resolvePrice(eu, pricing, "v", { amount: 1000, currency: "GBP" }), undefined);
+  assert.equal(resolvePrice(eu, plain, "v", { amount: 1000, currency: "EUR" }), 1000);
+  assert.equal(resolvePrice(eu, plain, "v", { amount: 1000, currency: "GBP" }), undefined);
 });
 
 test("a fixed price wins over the list's adjustment", () => {
-  const fixed = new Map([["v", { amount: 777, currency: "GBP" }]]);
-  assert.equal(
-    resolvePrice(uk, { inCatalog: true, fixed }, "v", { amount: 1000, currency: "EUR" }),
-    777,
-  );
+  const fixed = fixedOn(LIST_UK, "v", { amount: 777, currency: "GBP" });
+  assert.equal(resolvePrice(uk, { ...plain, fixed }, "v", { amount: 1000, currency: "EUR" }), 777);
 });
 
 test("a list adjusts base prices in its currency and refuses others", () => {
-  const pricing = { inCatalog: true, fixed: noFixed };
-  assert.equal(resolvePrice(uk, pricing, "v", { amount: 1005, currency: "GBP" }), 905);
-  assert.equal(resolvePrice(uk, pricing, "v", { amount: 1005, currency: "EUR" }), undefined);
+  assert.equal(resolvePrice(uk, plain, "v", { amount: 1005, currency: "GBP" }), 905);
+  assert.equal(resolvePrice(uk, plain, "v", { amount: 1005, currency: "EUR" }), undefined);
   assert.equal(
-    resolvePrice(
-      { ...uk, priceList: { id: LIST_UK, currency: "EUR", adjustmentBps: 0 } },
-      pricing,
-      "v",
-      {
-        amount: 1005,
-        currency: "GBP",
-      },
-    ),
+    resolvePrice({ ...uk, priceLists: [{ ...ukList, currency: "EUR" }] }, plain, "v", {
+      amount: 1005,
+      currency: "GBP",
+    }),
     undefined,
   );
   assert.equal(
-    resolvePrice({ ...uk, priceList: "missing" }, pricing, "v", { amount: 1005, currency: "GBP" }),
+    resolvePrice({ ...uk, priceLists: "missing" }, plain, "v", { amount: 1005, currency: "GBP" }),
     undefined,
+  );
+});
+
+test("the lowest live list wins, ties to the oldest", () => {
+  const older: LivePriceList = { id: "pl_1", currency: "GBP", adjustment: null };
+  const sale: LivePriceList = {
+    id: "pl_2",
+    currency: "GBP",
+    adjustment: { percentBps: -2000, appliesTo: { type: "all" } },
+  };
+  const base = { amount: 1000, currency: "GBP" };
+  const market = { ...uk, priceLists: [older, sale, ukList] };
+  // The older list has no adjustment: it prices only its fixed variants.
+  assert.equal(resolvePrice(market, plain, "v", base), 800);
+  assert.equal(
+    resolvePrice(
+      market,
+      { ...plain, fixed: fixedOn("pl_1", "v", { amount: 950, currency: "GBP" }) },
+      "v",
+      base,
+    ),
+    800,
+  );
+  assert.equal(
+    resolvePrice(
+      market,
+      { ...plain, fixed: fixedOn("pl_1", "v", { amount: 700, currency: "GBP" }) },
+      "v",
+      base,
+    ),
+    700,
+  );
+  // A tie: the oldest list's price stands (the same amount either way).
+  assert.equal(
+    resolvePrice(
+      market,
+      { ...plain, fixed: fixedOn("pl_1", "v", { amount: 800, currency: "GBP" }) },
+      "v",
+      base,
+    ),
+    800,
+  );
+});
+
+test("a scoped adjustment reaches only its products or categories, ancestors included", () => {
+  const forProducts: LivePriceList = {
+    id: "pl_p",
+    currency: "GBP",
+    adjustment: { percentBps: -5000, appliesTo: { type: "products", products: ["p"] } },
+  };
+  const forCategories: LivePriceList = {
+    id: "pl_c",
+    currency: "GBP",
+    adjustment: { percentBps: -1000, appliesTo: { type: "categories", categories: ["c1"] } },
+  };
+  const base = { amount: 1000, currency: "GBP" };
+  const market = { ...uk, priceLists: [forProducts, forCategories] };
+  assert.equal(resolvePrice(market, plain, "v", base), 500);
+  assert.equal(resolvePrice(market, { ...plain, product: "other" }, "v", base), 1000);
+  assert.equal(
+    resolvePrice(
+      market,
+      { ...plain, product: "other", categories: new Set(["c1", "c2"]) },
+      "v",
+      base,
+    ),
+    900,
   );
 });
 
@@ -166,7 +237,7 @@ test("documents: one per priced variant, with product fields and option facets",
   const documents = buildDocuments({
     product: shirt,
     market: eu,
-    pricing: { inCatalog: true, fixed: noFixed },
+    pricing: { ...plain, product: shirt.id },
     stock: {
       items: new Map([[id("var", 12), item(12, [[LOCATION_EU, 0]])]]),
       locations: [stockLocation(LOCATION_EU, [MARKET_EU])],
@@ -208,7 +279,7 @@ test("inactive products and unpriced variants have no documents", () => {
   const [, mug, draft] = catalogue();
   assert.ok(mug && draft);
   const input = {
-    pricing: { inCatalog: true, fixed: noFixed },
+    pricing: plain,
     stock: { items: new Map(), locations: [] },
     splitBy: [],
     categories: [],
@@ -216,12 +287,12 @@ test("inactive products and unpriced variants have no documents", () => {
   assert.deepEqual(buildDocuments({ ...input, product: draft, market: eu }), []);
   // The mug's base price is in EUR: none in the GBP market without a fixed price.
   assert.deepEqual(buildDocuments({ ...input, product: mug, market: uk }), []);
-  const fixed = new Map([[id("var", 21), { amount: 1300, currency: "GBP" }]]);
+  const fixed = fixedOn(LIST_UK, id("var", 21), { amount: 1300, currency: "GBP" });
   const priced = buildDocuments({
     ...input,
     product: mug,
     market: uk,
-    pricing: { inCatalog: true, fixed },
+    pricing: { ...plain, fixed },
   });
   assert.equal(priced[0]?.price, 1300);
   assert.equal(priced[0]?.currency, "GBP");

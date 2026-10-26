@@ -51,7 +51,7 @@ function fixture(): SearchDocument[] {
     id: MARKET_EU,
     currency: "EUR",
     catalog: CATALOG_EU,
-    priceList: null,
+    priceLists: [],
   };
   const documents: SearchDocument[] = [];
   for (let n = 1; n <= 24; n++) {
@@ -98,7 +98,7 @@ function fixture(): SearchDocument[] {
       ...buildDocuments({
         product: p,
         market,
-        pricing: { inCatalog: true, fixed: new Map() },
+        pricing: { inCatalog: true, product: p.id, categories: new Set(), fixed: new Map() },
         stock: { items: stock, locations: [stockLocation(LOCATION_EU, [MARKET_EU])] },
         splitBy: ["color"],
         categories: n % 2 === 0 ? [CATEGORY] : [],

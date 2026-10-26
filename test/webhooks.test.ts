@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { signRequest } from "@hypha/app";
+import { signRequest } from "@hyphacommerce/app";
 
 import { type EventEnvelope, marksFor } from "../src/core/events.ts";
 import { webhooks } from "../src/core/webhooks.ts";
@@ -91,6 +91,17 @@ test("events mark what they change, as Hypha's SearchIndexer does", () => {
     ),
     [`price_list:${PL}`, `variant:${V}`],
   );
+  // A list starting, ending or moving between catalogs reprices whole markets.
+  for (const type of [
+    "price_list.started",
+    "price_list.ended",
+    "catalog.price_lists_added",
+    "catalog.price_lists_removed",
+  ])
+    assert.deepEqual(
+      marksFor(envelope(type, { price_list: PL, catalogs: [CAT] })).map((m) => m.target),
+      ["all"],
+    );
   assert.deepEqual(
     marksFor(envelope("inventory_item.changed", { inventory_item: id("inv", 1), variant: V })).map(
       (m) => m.target,

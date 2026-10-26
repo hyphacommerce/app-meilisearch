@@ -41,13 +41,24 @@ function fakeHypha(products = catalogue()): Route[] {
         },
       ],
     }),
-    get(`/admin/catalogs/${CATALOG_EU}`, { id: CATALOG_EU, market: MARKET_EU, price_list: null }),
+    get(`/admin/catalogs/${CATALOG_EU}`, { id: CATALOG_EU, market: MARKET_EU, price_lists: [] }),
     get(`/admin/catalogs/${CATALOG_UK}`, {
       id: CATALOG_UK,
       market: MARKET_UK,
-      price_list: LIST_UK,
+      price_lists: [LIST_UK],
     }),
-    get("/admin/price-lists", { items: [{ id: LIST_UK, currency: "GBP", adjustment_bps: 0 }] }),
+    get("/admin/price-lists", {
+      items: [
+        {
+          id: LIST_UK,
+          currency: "GBP",
+          phase: "active",
+          audience: { groups: [] },
+          adjustment: { percent_bps: 0, applies_to: { type: "all" } },
+        },
+      ],
+      has_more: false,
+    }),
     get("/admin/locations", {
       items: [stockLocation(LOCATION_EU, [MARKET_EU]), stockLocation(LOCATION_UK, [MARKET_UK])],
     }),

@@ -1,8 +1,8 @@
 // Reading what search needs from Hypha's admin API, as the app (its OAuth token): the
 // scopes in the manifest are exactly these routes' `x-hypha-scopes`.
 
-import type { HyphaClient } from "@hypha/app";
-import type { AdminSchemas } from "@hypha/sdk/admin";
+import type { HyphaClient } from "@hyphacommerce/app";
+import type { AdminSchemas } from "@hyphacommerce/sdk/admin";
 
 import type { InventoryItem, Location, Money, Product } from "./documents.ts";
 import { documented, stringField } from "./json.ts";
@@ -75,9 +75,8 @@ export class HyphaReader {
   }
 
   async priceLists(): Promise<PriceList[]> {
-    return (
-      await this.#get<AdminSchemas["PriceListListResponse"]>("price lists", "/admin/price-lists")
-    ).items;
+    return (await this.#get<AdminSchemas["PriceListPage"]>("price lists", "/admin/price-lists"))
+      .items;
   }
 
   async locations(): Promise<Location[]> {

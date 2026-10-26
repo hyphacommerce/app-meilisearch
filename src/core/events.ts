@@ -9,7 +9,7 @@
 // than silently marking nothing. The envelope's `subject.id` is prefixed the same way
 // for every kind with an ID type (`chan_`, `pcat_`, `loc_` since 0029's as-built).
 
-import type { WebhookEnvelope } from "@hypha/app";
+import type { WebhookEnvelope } from "@hyphacommerce/app";
 
 /** Targets and their priority (lower first). Caches are rebuilt before products. */
 export const PRIORITY = {
@@ -52,7 +52,7 @@ export const productsFrom = (cursor: string): MarkTarget => ({
   priority: PRIORITY.expand,
 });
 
-/** An event as Hypha delivers it (design note 0016, EV5), parsed by `@hypha/app`. */
+/** An event as Hypha delivers it (design note 0016, EV5), parsed by `@hyphacommerce/app`. */
 export type EventEnvelope = WebhookEnvelope;
 
 /** The prefixes of the IDs payloads carry (`hypha_core::define_id!`). */
@@ -140,9 +140,14 @@ export function marksFor(event: EventEnvelope): MarkTarget[] {
       return changed(event, ["parent", "visible"])
         ? [category(payloadId(event, "category", "category"))]
         : [];
-    // Rare and wide: which products a market sells, at what price, from where.
+    // Rare and wide: which products a market sells, at what price, from where. A list
+    // starting or ending, or joining or leaving a catalog, reprices every product in it.
     case "catalog.changed":
+    case "catalog.price_lists_added":
+    case "catalog.price_lists_removed":
     case "price_list.changed":
+    case "price_list.started":
+    case "price_list.ended":
       return [all()];
     case "market.changed":
       return changed(event, ["created", "countries", "currency", "prices_include_tax", "catalog"])
