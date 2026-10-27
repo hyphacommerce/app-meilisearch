@@ -59,7 +59,6 @@ export function product(spec: {
     product_type: spec.product_type ?? null,
     tags: spec.tags ?? [],
     categories: spec.categories ?? [],
-    custom_fields: {},
     channels: spec.channels ?? [CHANNEL],
     media: [],
     options,
@@ -76,7 +75,6 @@ export function product(spec: {
       sku: variant.sku ?? null,
       title: variant.values.length > 0 ? variant.values.join(" / ") : null,
       weight_grams: null,
-      custom_fields: {},
     })),
   };
 }
